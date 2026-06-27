@@ -1,0 +1,18 @@
+{
+	"threshold": 0,
+	"reporters": ["console", "html", "json"],
+	"ignore": [
+		"**/node_modules/**",
+		"**/dist/**",
+		"**/coverage/**",
+		"**/.jscpd-report/**",
+		"**/*.test.mjs",
+		"**/.omt/**"
+	],
+	"min-lines": 3,
+	"min-tokens": 30,
+	"format": ["javascript"],
+	"output": "./.jscpd-report",
+	"pattern": "**/*.mjs",
+	"max-lines": 1000
+}

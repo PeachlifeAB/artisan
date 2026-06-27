@@ -1,0 +1,13 @@
+{
+	"$schema": "https://unpkg.com/knip@6/schema.json",
+	"entry": ["bin/**/*.mjs", "tests/**/*.test.mjs"],
+	"ignore": ["dist/**"],
+	"project": ["src/**/*.mjs", "tests/**/*.mjs"],
+	"ignoreExportsUsedInFile": true,
+	"ignoreDependencies": ["lint-staged"],
+	"ignoreBinaries": ["gitleaks", "semgrep", "tsc"],
+	"eslint": {
+		"config": "eslint.config.mjs"
+	},
+	"vitest": true
+}

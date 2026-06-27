@@ -1,0 +1,8 @@
+import { test, expect } from '@peachlife/artisan';
+
+test('CLI outputs correct version', async ({ run }) => {
+  const { stdout, exitCode } = await run('--version');
+
+  expect(exitCode).toBe(0);
+  expect(stdout).toMatch(/\d+\.\d+\.\d+/);
+});

@@ -1,0 +1,8 @@
+import { test, expect } from '@peachlife/artisan';
+
+test('CLI help shows usage', async ({ run }) => {
+  const { stdout, exitCode } = await run('--help');
+
+  expect(exitCode).toBe(0);
+  expect(stdout).toContain('Usage');
+});

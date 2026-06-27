@@ -1,0 +1,7 @@
+import { test, expect } from '@peachlife/artisan';
+
+test('{{TEST_NAME}}', async ({ run, copyFixture, setup }) => {
+  const { stdout, stderr, exitCode } = await run('');
+
+  expect(exitCode).toBe(0);
+});

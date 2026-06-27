@@ -1,0 +1,43 @@
+#!/bin/sh
+
+command=${1:-help}
+
+case "$command" in
+  --version|version)
+    echo "1.0.0"
+    ;;
+  --help|help)
+    echo "dogfood-cli 1.0.0"
+    echo "Usage: dogfood-cli <command>"
+    echo "Commands: version, write-file, read-config, fail"
+    ;;
+  write-file)
+    target=$2
+    value=${3:-created by dogfood-cli}
+    if [ -z "$target" ]; then
+      echo "write-file requires a target path" >&2
+      exit 2
+    fi
+    if ! printf '%s\n' "$value" > "$target"; then
+      echo "failed to write $target" >&2
+      exit 1
+    fi
+    echo "wrote $target"
+    ;;
+  read-config)
+    config_file="${XDG_CONFIG_HOME:-$HOME/.config}/dogfood-cli/config.toml"
+    if [ ! -f "$config_file" ]; then
+      echo "config not found: $config_file" >&2
+      exit 1
+    fi
+    cat "$config_file"
+    ;;
+  fail)
+    echo "intentional failure" >&2
+    exit 1
+    ;;
+  *)
+    echo "Unknown command: $command" >&2
+    exit 2
+    ;;
+esac

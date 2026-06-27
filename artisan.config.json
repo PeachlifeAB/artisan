@@ -1,0 +1,9 @@
+{
+	"artifact": "./tests/fixtures/dogfood-cli",
+	"distros": [
+		"debian:stable-slim",
+		"alpine:latest",
+		"archlinux/archlinux:latest"
+	],
+	"configs": ["./fixtures/dogfood-config"]
+}

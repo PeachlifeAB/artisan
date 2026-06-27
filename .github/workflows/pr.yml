@@ -1,0 +1,29 @@
+# .github/workflows/static-analysis.yml
+name: pr
+on: [pull_request, push]
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run lint:all
+
+      - name: Upload jscpd report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jscpd-report
+          path: .jscpd-report/
+
+      - name: Upload dep graph
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-graph
+          path: graph.svg

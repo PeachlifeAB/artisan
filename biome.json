@@ -1,0 +1,28 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
+	"files": {
+		"includes": [
+			"**",
+			"!**/node_modules",
+			"!**/dist",
+			"!**/coverage",
+			"!**/.jscpd-report",
+			"!**/.review",
+			"!**/.atl",
+			"!**/.omt",
+			"!**/.agents",
+			"!**/.claude",
+			"!sbom.cdx.json"
+		]
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended"
+		}
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab"
+	}
+}
