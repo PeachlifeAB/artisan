@@ -77,13 +77,13 @@ function buildVitestArguments({ options, merged, testFiles }) {
 			value:
 				options.retries === undefined ? undefined : String(options.retries),
 		},
-		{ flag: "--verbose", value: options.verbose, boolean: true },
 	];
 	for (const { flag, value, boolean = false } of flagRules) {
 		if (!value) continue;
 		vitestArguments.push(flag);
 		if (!boolean) vitestArguments.push(value);
 	}
+	if (options.verbose) vitestArguments.push("--reporter", "verbose");
 	return vitestArguments;
 }
 

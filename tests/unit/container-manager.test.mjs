@@ -63,7 +63,17 @@ function expectRunResultShape(result) {
 }
 
 function createHangingContainer() {
-	return createMockContainer({ exec: vi.fn(() => new Promise(() => {})) });
+	let isStartupDone = false;
+	return createMockContainer({
+		exec: vi.fn(() => {
+			// Let the first exec (mkdir -p /tmp/work from start()) succeed, then hang.
+			if (!isStartupDone) {
+				isStartupDone = true;
+				return Promise.resolve({ output: ["", ""], exitCode: 0 });
+			}
+			return new Promise(() => {});
+		}),
+	});
 }
 
 function expectExecCalledWith(container, arguments_) {
@@ -118,6 +128,57 @@ describe("ContainerManager", () => {
 		expect(container.exec).toHaveBeenCalledWith(
 			[MOUNT_TARGET, "init"],
 			expect.objectContaining({ workingDir: "/tmp/project" }),
+		);
+	});
+
+	test("exec() defaults cwd to /tmp/work", async () => {
+		const { container, cm } = await containerAndManager();
+		await cm.exec("--version");
+		expect(container.exec).toHaveBeenCalledWith(
+			[MOUNT_TARGET, "--version"],
+			expect.objectContaining({ workingDir: "/tmp/work" }),
+		);
+	});
+
+	test("exec() respects explicit cwd override", async () => {
+		const { container, cm } = await containerAndManager();
+		await cm.exec("--version", { cwd: "/usr/local/bin" });
+		expect(container.exec).toHaveBeenCalledWith(
+			[MOUNT_TARGET, "--version"],
+			expect.objectContaining({ workingDir: "/usr/local/bin" }),
+		);
+	});
+
+	test("start() runs mkdir -p /tmp/work before user setupCommands", async () => {
+		const container = createMockContainer();
+		mockNextContainer(container);
+		const cm = new ContainerManager(DISTRO, ARTIFACT, {
+			setupCommands: ["echo hello"],
+		});
+		await cm.start();
+		expect(container.exec).toHaveBeenNthCalledWith(
+			1,
+			["sh", "-c", "mkdir -p /tmp/work"],
+			expect.any(Object),
+		);
+		expect(container.exec).toHaveBeenNthCalledWith(
+			2,
+			["sh", "-c", "echo hello"],
+			expect.any(Object),
+		);
+	});
+
+	test("start() throws DockerError when workdir mkdir fails", async () => {
+		const container = createMockContainer({
+			exec: vi.fn().mockResolvedValue({
+				output: ["", "mkdir: permission denied"],
+				exitCode: 1,
+			}),
+		});
+		mockNextContainer(container);
+		const cm = new ContainerManager(DISTRO, ARTIFACT, {});
+		await expect(cm.start()).rejects.toThrow(
+			"failed to initialize default workdir",
 		);
 	});
 
@@ -211,10 +272,15 @@ describe("ContainerManager", () => {
 
 	test("start() stops container if setup cmd fails", async () => {
 		const container = createMockContainer({
-			exec: vi.fn().mockResolvedValue({
-				output: ["", "command not found"],
-				exitCode: 127,
-			}),
+			exec: vi
+				.fn()
+				// workdir init succeeds
+				.mockResolvedValueOnce({ output: ["", ""], exitCode: 0 })
+				// setup command fails
+				.mockResolvedValueOnce({
+					output: ["", "command not found"],
+					exitCode: 127,
+				}),
 		});
 		mockNextContainer(container);
 		const cm = new ContainerManager(DISTRO, ARTIFACT, {

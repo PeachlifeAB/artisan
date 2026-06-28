@@ -8,6 +8,8 @@ import { BINARY_MOUNT_DIR } from "./constants.mjs";
 const NO_CAP = 0;
 const SH_C = ["sh", "-c"];
 const ERR_NOT_STARTED = "Container not started";
+// eslint-disable-next-line sonarjs/publicly-writable-directories
+const DEFAULT_WORKDIR = "/tmp/work";
 
 function parseChar(state, char) {
 	if (state.isEscaped) {
@@ -173,6 +175,17 @@ export class ContainerManager {
 
 			this.#container = await builder.start();
 
+			const workdirResult = await this.#execBounded(
+				[...SH_C, `mkdir -p ${DEFAULT_WORKDIR}`],
+				{},
+				NO_CAP,
+			);
+			if (workdirResult.exitCode !== 0) {
+				throw new DockerError(
+					`failed to initialize default workdir ${DEFAULT_WORKDIR}\n${workdirResult.stderr || workdirResult.stdout}`,
+				);
+			}
+
 			for (const command of this.#setupCommands) {
 				const result = await this.#execBounded([...SH_C, command], {}, NO_CAP);
 				if (result.exitCode !== 0) {
@@ -201,7 +214,7 @@ export class ContainerManager {
 		const {
 			env: environment = {},
 			timeout = NO_CAP,
-			cwd = BINARY_MOUNT_DIR,
+			cwd = DEFAULT_WORKDIR,
 		} = options;
 		const command = [
 			this.#mountTarget,

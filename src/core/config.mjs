@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { access, readFile } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
 import { UsageError } from "../utils/errors.mjs";
 import { DEFAULT_DISTROS } from "./constants.mjs";
 
@@ -63,6 +63,14 @@ function validateConfigShape(config) {
 	if (config.artifact !== undefined && typeof config.artifact !== "string") {
 		throw new UsageError('"artifact" must be a string');
 	}
+	if (
+		typeof config.artifact === "string" &&
+		(isAbsolute(config.artifact) || config.artifact.startsWith("~"))
+	) {
+		throw new UsageError(
+			'"artifact" must be a repo-relative path (e.g. "./bin/mycli"), not an absolute or home-relative path',
+		);
+	}
 	if (config.distros !== undefined)
 		assertStringArray(config.distros, "distros");
 	if (
@@ -118,8 +126,28 @@ export async function readJsonConfig(configPath, { optional = false } = {}) {
 	}
 }
 
+async function fileExists(filePath) {
+	try {
+		await access(filePath);
+		return true;
+	} catch (error) {
+		if (error?.code === "ENOENT") return false;
+		throw error;
+	}
+}
+
 export async function loadConfig(cwd = process.cwd()) {
 	const configPath = join(cwd, "artisan.config.json");
+	const packageJsonPath = join(cwd, "package.json");
+	const [configExists, packageExists] = await Promise.all([
+		fileExists(configPath),
+		fileExists(packageJsonPath),
+	]);
+	if (!configExists && !packageExists) {
+		throw new UsageError(
+			"No artisan.config.json or package.json found — run from the project root",
+		);
+	}
 	const fileConfig = await readJsonConfig(configPath, { optional: true });
 	if (fileConfig.configs !== undefined) {
 		validateConfigs(fileConfig.configs);

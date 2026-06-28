@@ -29,6 +29,10 @@ async function expectConfigError(payload, message) {
 
 describe("loadConfig", () => {
 	test("returns zero-config defaults when no config file exists", async () => {
+		await writeFile(
+			join(sandbox.directory, "package.json"),
+			JSON.stringify({ name: "test" }),
+		);
 		const config = await loadConfig(sandbox.directory);
 		expect(config.artifact).toBe("");
 		expect(config.testMatch).toBe(TEST_MATCH);
@@ -100,6 +104,10 @@ describe("mergeConfigWithFlags", () => {
 
 describe("configs schema", () => {
 	test("defaults configs to []", async () => {
+		await writeFile(
+			join(sandbox.directory, "package.json"),
+			JSON.stringify({ name: "test" }),
+		);
 		const config = await loadConfig(sandbox.directory);
 		expect(config.configs).toEqual([]);
 	});
@@ -140,6 +148,34 @@ describe("configs schema", () => {
 
 	test("rejects entry that is not string or object", () =>
 		expectConfigError({ configs: [42] }));
+});
+
+describe("artifact path validation", () => {
+	test("rejects absolute artifact path", () =>
+		expectConfigError({ artifact: "/usr/local/bin/mycli" }, "repo-relative"));
+
+	test("rejects home-relative artifact path", () =>
+		expectConfigError({ artifact: "~/bin/mycli" }, "repo-relative"));
+
+	test("accepts relative artifact path", async () => {
+		await writeConfig({ artifact: "./bin/mycli" });
+		await expect(loadConfig(sandbox.directory)).resolves.toMatchObject({
+			artifact: "./bin/mycli",
+		});
+	});
+
+	test("accepts bare relative artifact path", async () => {
+		await writeConfig({ artifact: "bin/mycli" });
+		await expect(loadConfig(sandbox.directory)).resolves.toMatchObject({
+			artifact: "bin/mycli",
+		});
+	});
+
+	test("throws when no config and no package.json in cwd", async () => {
+		const emptyDirectory = join(sandbox.directory, "empty-subdir");
+		await mkdir(emptyDirectory);
+		await expect(loadConfig(emptyDirectory)).rejects.toThrow("project root");
+	});
 });
 
 describe("field validation", () => {

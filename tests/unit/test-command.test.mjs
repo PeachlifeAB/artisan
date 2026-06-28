@@ -184,3 +184,17 @@ test("runTest does not overwrite a config reporter when --reporter is absent", a
 		"junit",
 	);
 });
+
+test("passes --reporter=verbose when --verbose flag is set", async () => {
+	const [, vitestArguments] = await runWithTestFile({ verbose: true });
+	expect(vitestArguments).toContain("--reporter");
+	expect(vitestArguments[vitestArguments.indexOf("--reporter") + 1]).toBe(
+		"verbose",
+	);
+	expect(vitestArguments).not.toContain("--verbose");
+});
+
+test("does not pass --verbose to vitest", async () => {
+	const [, vitestArguments] = await runWithTestFile({ verbose: true });
+	expect(vitestArguments).not.toContain("--verbose");
+});

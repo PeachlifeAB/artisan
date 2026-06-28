@@ -63,6 +63,7 @@ async function importWithFakeVitest() {
 		beforeEach: passthrough,
 		describe: passthrough,
 		expect,
+		onTestFailed: passthrough,
 		test: fakeTest,
 	}));
 	await import("../../src/api/injection.mjs");
@@ -201,5 +202,95 @@ describe("createTestContext", () => {
 		await expect(context.setup(["badcmd"])).rejects.toThrow(
 			"setup cmd failed: badcmd",
 		);
+	});
+
+	test("onTestFailed handler dumps last run() output to console.error", async () => {
+		const { createTestContext } = await import("../../src/api/injection.mjs");
+		let capturedCallback;
+		const fakeOnTestFailed = vi.fn((callback) => {
+			capturedCallback = callback;
+		});
+		const localContainer = {
+			exec: vi.fn().mockResolvedValue({
+				stdout: "hello out",
+				stderr: "oops err",
+				exitCode: 1,
+				timedOut: false,
+			}),
+			shell: vi.fn(),
+			copyFile: vi.fn(),
+		};
+		const context = createTestContext(localContainer, {
+			onTestFailed: fakeOnTestFailed,
+		});
+		expect(fakeOnTestFailed).toHaveBeenCalledTimes(1);
+		expect(capturedCallback).toBeDefined();
+		await context.run("--version");
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		capturedCallback();
+		expect(errorSpy).toHaveBeenCalledWith(
+			expect.stringContaining("artisan: last run() output"),
+		);
+		expect(errorSpy).toHaveBeenCalledWith("stdout:", "hello out");
+		expect(errorSpy).toHaveBeenCalledWith("stderr:", "oops err");
+		expect(errorSpy).toHaveBeenCalledWith("exitCode:", 1);
+		errorSpy.mockRestore();
+	});
+
+	test("shell() delegates to container.shell without throwing on non-zero", async () => {
+		const context = await importCreateTestContext();
+		mockContainer.shell.mockResolvedValueOnce({
+			stdout: "",
+			stderr: "fail",
+			exitCode: 1,
+			timedOut: false,
+		});
+		const result = await context.shell("badcmd");
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toBe("fail");
+	});
+
+	test("shell() returns stdout and stderr on success", async () => {
+		const context = await importCreateTestContext();
+		mockContainer.shell.mockResolvedValueOnce({
+			stdout: "output text",
+			stderr: "",
+			exitCode: 0,
+			timedOut: false,
+		});
+		const result = await context.shell("goodcmd");
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toBe("output text");
+	});
+
+	test("onTestFailed handler dumps last shell() output when shell was last called", async () => {
+		const { createTestContext } = await import("../../src/api/injection.mjs");
+		let capturedCallback;
+		const fakeOnTestFailed = vi.fn((callback) => {
+			capturedCallback = callback;
+		});
+		const localContainer = {
+			exec: vi.fn(),
+			shell: vi.fn().mockResolvedValue({
+				stdout: "shell out",
+				stderr: "shell err",
+				exitCode: 2,
+				timedOut: false,
+			}),
+			copyFile: vi.fn(),
+		};
+		const context = createTestContext(localContainer, {
+			onTestFailed: fakeOnTestFailed,
+		});
+		await context.shell("somecmd");
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		capturedCallback();
+		expect(errorSpy).toHaveBeenCalledWith(
+			expect.stringContaining("artisan: last run() output"),
+		);
+		expect(errorSpy).toHaveBeenCalledWith("stdout:", "shell out");
+		expect(errorSpy).toHaveBeenCalledWith("stderr:", "shell err");
+		expect(errorSpy).toHaveBeenCalledWith("exitCode:", 2);
+		errorSpy.mockRestore();
 	});
 });

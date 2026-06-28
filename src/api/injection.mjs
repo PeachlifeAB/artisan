@@ -7,14 +7,30 @@ export {
 	expect,
 } from "vitest";
 
-import { test as vitestTest } from "vitest";
+import { onTestFailed as vitestOnTestFailed, test as vitestTest } from "vitest";
 import { DEFAULT_XDG_CONFIG_HOME } from "../core/constants.mjs";
 import { ContainerManager } from "../core/container-manager.mjs";
 
-export function createTestContext(container) {
+export function createTestContext(
+	container,
+	{ onTestFailed = vitestOnTestFailed } = {},
+) {
+	let lastRun;
+
+	onTestFailed(() => {
+		if (!lastRun) return;
+		console.error("\n--- artisan: last run() output ---");
+		if (lastRun.stdout) console.error("stdout:", lastRun.stdout);
+		if (lastRun.stderr) console.error("stderr:", lastRun.stderr);
+		console.error("exitCode:", lastRun.exitCode);
+		console.error("---");
+	});
+
 	return {
 		async run(arguments_ = "", options = {}) {
-			return container.exec(arguments_, options);
+			const result = await container.exec(arguments_, options);
+			lastRun = result;
+			return result;
 		},
 		async copyFixture(localPath, containerPath) {
 			return container.copyFile(localPath, containerPath);
@@ -28,6 +44,11 @@ export function createTestContext(container) {
 					);
 				}
 			}
+		},
+		async shell(command, options = {}) {
+			const result = await container.shell(command, options);
+			lastRun = result;
+			return result;
 		},
 	};
 }
@@ -81,6 +102,9 @@ function buildExtendedTest() {
 		)
 		.extend("setup", async ({ artisanContext }) =>
 			artisanContext.setup.bind(artisanContext),
+		)
+		.extend("shell", async ({ artisanContext }) =>
+			artisanContext.shell.bind(artisanContext),
 		);
 }
 

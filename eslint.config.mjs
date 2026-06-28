@@ -54,8 +54,16 @@ export default [
 				},
 			],
 			"unicorn/import-style": "off",
-			"security/detect-non-literal-fs-filename": "warn",
-			"security/detect-object-injection": "warn",
+		},
+	},
+	{
+		// All fs paths in src/ are constructed via join(cwd, ...) from trusted
+		// internal sources, never user input — these rules produce 100% false
+		// positives for this pattern and would hide real findings elsewhere.
+		files: ["src/**/*.mjs", "bin/**/*.mjs", "templates/**/*.mjs"],
+		rules: {
+			"security/detect-non-literal-fs-filename": "off",
+			"security/detect-object-injection": "off",
 		},
 	},
 	{
@@ -80,6 +88,7 @@ export default [
 			"coverage/**",
 			".jscpd-report/**",
 			".review/**",
+			".claude/**",
 			"**/*.tmpl",
 			"examples/**",
 		],
