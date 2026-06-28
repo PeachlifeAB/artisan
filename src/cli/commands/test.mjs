@@ -1,6 +1,7 @@
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execa } from "execa";
+import { minimatch } from "minimatch";
 import { resolveArtifact } from "../../core/artifact-manager.mjs";
 import { loadConfig, mergeConfigWithFlags } from "../../core/config.mjs";
 import { DEFAULT_XDG_CONFIG_HOME } from "../../core/constants.mjs";
@@ -106,6 +107,55 @@ function printSetupInstructions() {
 	console.error("  npx @peachlife/artisan test --bootstrap");
 }
 
+async function buildGroup(files, artifactString, merged, cwd) {
+	const artifactPath = await resolveArtifact(artifactString, cwd);
+	const resolvedConfigs = await resolveConfigs(
+		merged.configs ?? [],
+		cwd,
+		basename(artifactPath),
+	);
+	return { files, artifactPath, resolvedConfigs };
+}
+
+async function resolveArtifactGroups(testFiles, merged, cwd) {
+	const artifactEntries = merged.artifacts ?? [];
+	if (artifactEntries.length === 0) {
+		return [await buildGroup(testFiles, merged.artifact, merged, cwd)];
+	}
+
+	// Bucket each file into the first matching artifacts entry, or a fallback bucket.
+	// testFiles are absolute; testMatch patterns are relative to cwd — compare relative.
+	const buckets = new Map(); // artifactString -> file[]
+	const fallback = [];
+	for (const file of testFiles) {
+		const relative = file.startsWith(cwd) ? file.slice(cwd.length + 1) : file;
+		const entry = artifactEntries.find(({ testMatch }) =>
+			minimatch(relative, testMatch, { matchBase: false }),
+		);
+		if (entry) {
+			const key = entry.artifact;
+			if (!buckets.has(key)) buckets.set(key, []);
+			buckets.get(key).push(file);
+		} else {
+			fallback.push(file);
+		}
+	}
+
+	const groups = [];
+	for (const [artifactString, files] of buckets) {
+		groups.push(await buildGroup(files, artifactString, merged, cwd));
+	}
+	if (fallback.length > 0) {
+		if (!merged.artifact) {
+			throw new UsageError(
+				`${fallback.length} test file(s) did not match any "artifacts" entry and no top-level "artifact" is set as fallback:\n  ${fallback.join("\n  ")}`,
+			);
+		}
+		groups.push(await buildGroup(fallback, merged.artifact, merged, cwd));
+	}
+	return groups;
+}
+
 /**
  * Handle a project with no artisan.config.json before `test` runs.
  *
@@ -178,7 +228,6 @@ export async function runTest(files, options) {
 		process.exit(0);
 	}
 
-	const artifactPath = await resolveArtifact(merged.artifact);
 	const distros = merged.distros;
 	if (distros.length === 0) {
 		throw new UsageError(
@@ -187,46 +236,60 @@ export async function runTest(files, options) {
 	}
 
 	await ensureDockerAvailable();
-	const resolvedConfigs = await resolveConfigs(
-		merged.configs ?? [],
+
+	// Group test files by artifact. When `artifacts` entries are defined, each
+	// file is matched against them in order (first match wins). Unmatched files
+	// fall through to the top-level artifact.
+	const artifactGroups = await resolveArtifactGroups(
+		testFiles,
+		merged,
 		process.cwd(),
-		basename(artifactPath),
 	);
 
 	let overallExitCode = 0;
-	const runForDistro = async (distro) => {
-		const setupCommands = merged.setup?.[distro.split(":", 1)[0]] ?? [];
-		const vitestArguments = buildVitestArguments({
-			options,
-			merged,
-			testFiles,
-		});
+	const runGroup = async ({
+		files,
+		artifactPath: groupArtifact,
+		resolvedConfigs,
+	}) => {
+		const runForDistro = async (distro) => {
+			const setupCommands = merged.setup?.[distro.split(":", 1)[0]] ?? [];
+			const vitestArguments = buildVitestArguments({
+				options,
+				merged,
+				testFiles: files,
+			});
 
-		const result = await execa("vitest", vitestArguments, {
-			preferLocal: true,
-			localDir: join(__dirname, "../../.."),
-			env: {
-				...process.env,
-				ARTISAN_DISTRO: distro,
-				ARTISAN_ARTIFACT: artifactPath,
-				ARTISAN_SETUP: JSON.stringify(setupCommands),
-				ARTISAN_CONFIGS: JSON.stringify(resolvedConfigs),
-				ARTISAN_XDG_CONFIG_HOME: DEFAULT_XDG_CONFIG_HOME,
-				...(options.noColor && { NO_COLOR: "1" }),
-			},
-			stdio: options.quiet ? "pipe" : "inherit",
-			reject: false,
-		});
-		if (result.exitCode !== 0) overallExitCode = 1;
+			const result = await execa("vitest", vitestArguments, {
+				preferLocal: true,
+				localDir: join(__dirname, "../../.."),
+				env: {
+					...process.env,
+					ARTISAN_DISTRO: distro,
+					ARTISAN_ARTIFACT: groupArtifact,
+					ARTISAN_SETUP: JSON.stringify(setupCommands),
+					ARTISAN_CONFIGS: JSON.stringify(resolvedConfigs),
+					ARTISAN_XDG_CONFIG_HOME: DEFAULT_XDG_CONFIG_HOME,
+					...(options.noColor && { NO_COLOR: "1" }),
+				},
+				stdio: options.quiet ? "pipe" : "inherit",
+				reject: false,
+			});
+			if (result.exitCode !== 0) overallExitCode = 1;
+		};
+
+		if (merged.parallel) {
+			// eslint-disable-next-line unicorn/no-array-callback-reference
+			await Promise.all(distros.map(runForDistro));
+		} else {
+			for (const distro of distros) {
+				await runForDistro(distro);
+			}
+		}
 	};
 
-	if (merged.parallel) {
-		// eslint-disable-next-line unicorn/no-array-callback-reference
-		await Promise.all(distros.map(runForDistro));
-	} else {
-		for (const distro of distros) {
-			await runForDistro(distro);
-		}
+	for (const group of artifactGroups) {
+		await runGroup(group);
 	}
 	// eslint-disable-next-line unicorn/no-process-exit
 	process.exit(overallExitCode);

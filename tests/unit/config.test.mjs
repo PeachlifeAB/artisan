@@ -178,6 +178,69 @@ describe("artifact path validation", () => {
 	});
 });
 
+describe("artifacts schema", () => {
+	test("defaults artifacts to []", async () => {
+		await writeFile(
+			join(sandbox.directory, "package.json"),
+			JSON.stringify({ name: "test" }),
+		);
+		const config = await loadConfig(sandbox.directory);
+		expect(config.artifacts).toEqual([]);
+	});
+
+	test("accepts valid artifacts array", async () => {
+		await writeConfig({
+			artifacts: [
+				{ testMatch: "tests/a.test.mjs", artifact: "./bin/a" },
+				{ testMatch: "tests/b.test.mjs", artifact: "./bin/b" },
+			],
+		});
+		const config = await loadConfig(sandbox.directory);
+		expect(config.artifacts).toHaveLength(2);
+		expect(config.artifacts[0]).toEqual({
+			testMatch: "tests/a.test.mjs",
+			artifact: "./bin/a",
+		});
+	});
+
+	test("rejects artifacts not an array", () =>
+		expectConfigError({ artifacts: "./bin/a" }, "artifacts"));
+
+	test("rejects artifacts entry missing testMatch", () =>
+		expectConfigError({ artifacts: [{ artifact: "./bin/a" }] }, "testMatch"));
+
+	test("rejects artifacts entry missing artifact", () =>
+		expectConfigError(
+			{ artifacts: [{ testMatch: "tests/a.test.mjs" }] },
+			"artifact",
+		));
+
+	test("rejects artifacts entry with blank testMatch", () =>
+		expectConfigError(
+			{ artifacts: [{ testMatch: "", artifact: "./bin/a" }] },
+			"testMatch",
+		));
+
+	test("rejects artifacts entry with blank artifact", () =>
+		expectConfigError(
+			{ artifacts: [{ testMatch: "tests/a.test.mjs", artifact: "" }] },
+			"artifact",
+		));
+
+	test("rejects artifacts entry with absolute artifact path", () =>
+		expectConfigError(
+			{
+				artifacts: [
+					{ testMatch: "tests/a.test.mjs", artifact: "/usr/local/bin/a" },
+				],
+			},
+			"repo-relative",
+		));
+
+	test("rejects artifacts entry that is not an object", () =>
+		expectConfigError({ artifacts: ["./bin/a"] }, "artifacts"));
+});
+
 describe("field validation", () => {
 	test("rejects non-array distros", () =>
 		expectConfigError({ distros: "alpine" }, "distros"));

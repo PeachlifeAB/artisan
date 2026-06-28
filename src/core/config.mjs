@@ -5,6 +5,7 @@ import { DEFAULT_DISTROS } from "./constants.mjs";
 
 const DEFAULTS = {
 	artifact: "",
+	artifacts: [],
 	distros: DEFAULT_DISTROS,
 	testMatch: "**/*.artisan.test.mjs",
 	timeout: undefined,
@@ -56,6 +57,38 @@ function validateSetup(setup) {
 	}
 	for (const [key, cmds] of Object.entries(setup)) {
 		assertStringArray(cmds, `setup["${key}"]`);
+	}
+}
+
+function validateArtifactsEntry(entry, index) {
+	if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+		throw new UsageError(
+			`artifacts[${index}] must be an object with "testMatch" and "artifact" fields`,
+		);
+	}
+	if (typeof entry.testMatch !== "string" || entry.testMatch.trim() === "") {
+		throw new UsageError(
+			`artifacts[${index}].testMatch must be a non-empty string`,
+		);
+	}
+	if (typeof entry.artifact !== "string" || entry.artifact.trim() === "") {
+		throw new UsageError(
+			`artifacts[${index}].artifact must be a non-empty string`,
+		);
+	}
+	if (isAbsolute(entry.artifact) || entry.artifact.startsWith("~")) {
+		throw new UsageError(
+			`artifacts[${index}].artifact must be a repo-relative path (e.g. "./bin/mycli"), not an absolute or home-relative path`,
+		);
+	}
+}
+
+function validateArtifacts(artifacts) {
+	if (!Array.isArray(artifacts)) {
+		throw new UsageError('"artifacts" in artisan.config.json must be an array');
+	}
+	for (const [index, entry] of artifacts.entries()) {
+		validateArtifactsEntry(entry, index);
 	}
 }
 
@@ -151,6 +184,9 @@ export async function loadConfig(cwd = process.cwd()) {
 	const fileConfig = await readJsonConfig(configPath, { optional: true });
 	if (fileConfig.configs !== undefined) {
 		validateConfigs(fileConfig.configs);
+	}
+	if (fileConfig.artifacts !== undefined) {
+		validateArtifacts(fileConfig.artifacts);
 	}
 	validateConfigShape(fileConfig);
 	return { ...DEFAULTS, ...fileConfig };

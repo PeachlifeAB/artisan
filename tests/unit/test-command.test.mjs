@@ -15,7 +15,8 @@ const TEST_TIMEOUT_FLAG = "--testTimeout";
 
 function makeDefaultConfig(overrides = {}) {
 	return {
-		artifact: ARTIFACT,
+		artifact: "",
+		artifacts: [],
 		distros: [ALPINE],
 		testMatch: TEST_MATCH,
 		timeout: 30_000,
@@ -197,4 +198,77 @@ test("passes --reporter=verbose when --verbose flag is set", async () => {
 test("does not pass --verbose to vitest", async () => {
 	const [, vitestArguments] = await runWithTestFile({ verbose: true });
 	expect(vitestArguments).not.toContain("--verbose");
+});
+
+test("runTest groups test files by artifacts entry and runs one vitest per group", async () => {
+	const ARTIFACT_A = "/tmp/bina";
+	const ARTIFACT_B = "/tmp/binb";
+	// resolveTestFiles returns absolute paths (fast-glob absolute: true)
+	const FILE_A = `${process.cwd()}/tests/a.artisan.test.mjs`;
+	const FILE_B = `${process.cwd()}/tests/b.artisan.test.mjs`;
+	loadConfig.mockResolvedValueOnce(
+		makeDefaultConfig({
+			artifacts: [
+				{ testMatch: "tests/a.artisan.test.mjs", artifact: "./bin/a" },
+				{ testMatch: "tests/b.artisan.test.mjs", artifact: "./bin/b" },
+			],
+		}),
+	);
+	resolveArtifact
+		.mockResolvedValueOnce(ARTIFACT_A)
+		.mockResolvedValueOnce(ARTIFACT_B);
+	resolveTestFiles.mockResolvedValueOnce([FILE_A, FILE_B]);
+
+	await runTestWithExitSpy([], {});
+
+	const calls = vitestCalls();
+	expect(calls).toHaveLength(2);
+	expect(calls[0][2].env.ARTISAN_ARTIFACT).toBe(ARTIFACT_A);
+	expect(calls[0][1]).toContain(FILE_A);
+	expect(calls[1][2].env.ARTISAN_ARTIFACT).toBe(ARTIFACT_B);
+	expect(calls[1][1]).toContain(FILE_B);
+});
+
+test("runTest throws UsageError when artifacts file has no matching entry and no fallback artifact", async () => {
+	const FILE_A = `${process.cwd()}/tests/a.artisan.test.mjs`;
+	loadConfig.mockResolvedValueOnce(
+		makeDefaultConfig({
+			artifacts: [
+				{ testMatch: "tests/b.artisan.test.mjs", artifact: "./bin/b" },
+			],
+		}),
+	);
+	resolveTestFiles.mockResolvedValueOnce([FILE_A]);
+
+	await expect(runTestWithExitSpy([], {})).rejects.toThrow("did not match any");
+});
+
+test("runTest falls back to top-level artifact when artifacts is empty", async () => {
+	loadConfig.mockResolvedValueOnce(makeDefaultConfig({ artifact: ARTIFACT }));
+	resolveArtifact.mockResolvedValueOnce(ARTIFACT);
+	resolveTestFiles.mockResolvedValueOnce([EXAMPLE_TEST]);
+	await runTestWithExitSpy([], {});
+	const calls = vitestCalls();
+	expect(calls).toHaveLength(1);
+	expect(calls[0][2].env.ARTISAN_ARTIFACT).toBe(ARTIFACT);
+});
+
+test("runTest uses artifacts entry artifact over top-level --artifact flag when testMatch matches", async () => {
+	const ARTIFACT_A = "/tmp/bina";
+	loadConfig.mockResolvedValueOnce(
+		makeDefaultConfig({
+			artifact: "/tmp/wrong",
+			artifacts: [
+				{ testMatch: "tests/a.artisan.test.mjs", artifact: "./bin/a" },
+			],
+		}),
+	);
+	resolveArtifact.mockResolvedValueOnce(ARTIFACT_A);
+	resolveTestFiles.mockResolvedValueOnce(["tests/a.artisan.test.mjs"]);
+
+	await runTestWithExitSpy([], {});
+
+	const calls = vitestCalls();
+	expect(calls).toHaveLength(1);
+	expect(calls[0][2].env.ARTISAN_ARTIFACT).toBe(ARTIFACT_A);
 });

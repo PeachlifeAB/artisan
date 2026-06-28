@@ -1,6 +1,6 @@
 {
 	"name": "@peachlife/artisan",
-	"version": "0.1.3",
+	"version": "0.1.4",
 	"type": "module",
 	"bin": {
 		"artisan": "./bin/artisan.mjs"
@@ -46,6 +46,7 @@
 		"commander": "^15.0.0",
 		"execa": "^9.6.1",
 		"fast-glob": "^3.3.3",
+		"minimatch": "^10.2.5",
 		"testcontainers": "^12.0.3"
 	},
 	"peerDependencies": {
